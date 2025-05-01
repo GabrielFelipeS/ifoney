@@ -1,31 +1,42 @@
 import { Text, View, StyleSheet, Image, TextInput, TouchableOpacity } from "react-native";
+import { query, collection, where, getDocs } from 'firebase/firestore';
+
 import React, { useState } from "react";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { loggedIn, useUsers } from "./_layout";
+import { firestore } from "./factory/firebase";
+import User from "./types/user.type";
 
 export default function Login() {
-  const { user, login } = loggedIn();
-  const { users, addUser } = useUsers();
+  const { logar } = loggedIn();
 
   const router = useRouter();
   const [cxLogin, setCxLogin] = useState('');
   const [cxSenha, setCxSenha] = useState('');
 
-  const logar = () => {
+  const logarFn = async () => {
+    const usersRef = collection(firestore, 'tbUsers')
 
-    const isCorrect = users.find(user => {
-      const isCorrect = cxLogin.trim() === user.email && cxSenha.trim() === user.password
-      
-      if(isCorrect) login(user)
+    const usersQuery = query(
+      usersRef,
+      where('email', '==', cxLogin.trim()),     
+      where('password', '==', cxSenha.trim())     
+    );
+    
+    const userSnapshot = await getDocs(usersQuery);
 
-      return isCorrect 
-    })
-
-    if(true) {
-      router.push("/splash?url=home")
-    } else {
+    if(userSnapshot.empty) {
       alert('Nome ou senha incorretos')
+    } else {
+      const snap = userSnapshot.docs[0]
+      const userId = snap.id
+      const userData = snap.data() as User;
+
+      logar({...userData, id: userId})
+      console.log({...userData, id: userId})
+      
+      router.push("/splash?url=home")
     }
   }
 
@@ -48,7 +59,7 @@ export default function Login() {
           value={cxSenha} 
         />
 
-        <TouchableOpacity onPress={logar}>
+        <TouchableOpacity onPress={logarFn}>
           <LinearGradient
             colors={['#a8eb12', '#00bf72', '#003A52']} 
             start={{ x: 0, y: 0 }} 

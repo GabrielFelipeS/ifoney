@@ -5,6 +5,7 @@ import { loggedIn } from "./_layout";
 import { BarChart, PieChart } from 'react-native-chart-kit';
 import { Dimensions } from 'react-native';
 import { LinearGradient } from "expo-linear-gradient";
+import { Timestamp } from "firebase/firestore";
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -29,7 +30,15 @@ const Dashboard = () => {
   const router = useRouter();
   const { categories, expenses } = loggedIn()
 
-  const expensesActualMonth = expenses.filter(expense => expense.date.getMonth() == new Date().getMonth())
+  const expensesActualMonth = expenses
+  .filter(expense =>  {
+    const date = expense.date instanceof Timestamp
+    ? expense.date.toDate()
+    : new Date(expense.date)
+    
+    return date.getMonth() == new Date().getMonth()
+  })
+  console.log(expensesActualMonth)
 
   const categorizeECounts = () => {
     const categoryTotals: { [key: string]: number } = {};
@@ -37,7 +46,6 @@ const Dashboard = () => {
     expensesActualMonth.forEach(expense => {
       const categoryName = expense.category.name;
       categoryTotals[categoryName] = (categoryTotals[categoryName] || 0) + 1;
-      categoryTotals["Total"] = (categoryTotals["Total"] || 0) +  categoryTotals[categoryName];
     });
 
     const total = Object.values(categoryTotals).reduce((acc, amount) => acc + amount, 0);
@@ -59,6 +67,9 @@ const Dashboard = () => {
 
     return categoryTotals;
   };
+
+  console.log(categorizeECounts())
+  console.log(categorizeExpenses())
 
   const totalExpensesByCategory = categorizeExpenses();
 
@@ -85,13 +96,16 @@ const Dashboard = () => {
     ],
   };
 
-  const pieChartData = Object.keys(totalExpensesByCategory).map(category => ({
-    name: category,
-    population: totalExpensesByCategory[category],
-    color: `#${Math.floor(Math.random()*16777215).toString(16)}`, 
-    legendFontColor: "#7F7F7F",
-    legendFontSize: 15, 
-  }));
+  const pieChartData = Object.keys(totalExpensesByCategory)
+    .filter(key => key !== 'Total')
+    .map(category => ({
+      name: category,
+      population: totalExpensesByCategory[category],
+      color: `#${Math.floor(Math.random()*16777215).toString(16)}`, 
+      legendFontColor: "#7F7F7F",
+      legendFontSize: 15, 
+    }))
+  ;
 
   return (
     <ScrollView style={styles.container}>
@@ -133,12 +147,14 @@ const Dashboard = () => {
           labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
           style: {
             borderRadius: 16,
+            paddingLeft: 100
           },
         }}
         fromZero={true}
         yAxisLabel="R$" 
         yAxisSuffix=" reais"
         verticalLabelRotation={30}
+
       />
 
       <BarChart

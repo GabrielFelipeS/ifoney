@@ -4,6 +4,7 @@ export default interface Expense {
     id: string;
     name: string;
     amount: number;
-    category: Category;
+    categoryId: string;
     date: Date;
+    userId?: string;
   }

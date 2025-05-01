@@ -1,10 +1,14 @@
-import { Stack } from "expo-router";
-import React, { createContext, useState, useContext } from 'react';
+import { router, Stack } from "expo-router";
+import React, { createContext, useState, useContext, useEffect } from 'react';
 import User from "./types/user.type";
 import Expense from "./types/expense.type";
 import Category from "./types/category.type";
 import { Alert } from "react-native";
 import Goal from "./types/goal.type";
+import firestoreService from './services/FirestoreService'
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { firestore } from "./factory/firebase";
+import { ExpenseWithCategory } from "./types/expense-category.type";
 
 export const UserContext = createContext<{ users: User[]; addUser: (newUser: User) => void } | undefined>(undefined);
 
@@ -17,8 +21,8 @@ export const useUsers = () => {
 };
 
 export const LoggedInContext = createContext<{ 
-    user: User; login: (loggedIn: User) => void, 
-    expenses: Expense[], addExpense: (expense: Expense) => void, removeExpense: (id: string) => void ,
+    user: User | undefined; logar: (loggedIn: User) => void, 
+    expenses: ExpenseWithCategory[], addExpense: (expense: Expense) => void, removeExpense: (id: string) => void ,
     categories: Category[], addCategories: (category: Category) => void , removeCategory: (id: string) => void , editedCategory: (categoryToEdit: Category | null,name: string) => void
     goal: Goal | undefined, setGoal: (goal: Goal) => void
   } | undefined>(undefined);
@@ -32,59 +36,137 @@ export const loggedIn = () => {
 };
 
 export default function RootLayout() {
-  const defaultUser: User = { name: 'Gabriel', email: "Email@gmail.com", password: '123' };
-
-  const defaultCategories: Category[] = [
-    { id: "1", name: "Alimentação" },
-    { id: "2", name: "Transporte" },
-    { id: "3", name: "Lazer" },
-    { id: "4", name: "Saúde" },
-    { id: "5", name: "Cursos" },
-  ]
-
-
-  const defaultExpenses: Expense[] = [
-    { id: "1", name: "Almoço", amount: 25.0, category: defaultCategories[0], date: new Date() },
-    { id: "2", name: "Transporte", amount: 12.5, category: defaultCategories[1], date: new Date() },
-    { id: "3", name: "Café", amount: 5.0, category: defaultCategories[2], date: new Date() },
-    { id: "5", name: "Sorvete", amount: 4.0, category: defaultCategories[0], date: new Date() },
-    { id: "6", name: "Angular 19", amount: 25.0, category: defaultCategories[4], date: new Date()},
-  ]
-
-
   const [goal, setGoal] = useState<Goal>()
-  const [users, setUsers] = useState<User[]>([defaultUser]); 
-  const [expenses, setExpenses] = useState<Expense[]>(defaultExpenses); 
+  const [users, setUsers] = useState<User[]>([]); 
+  const [expenses, setExpenses] = useState<ExpenseWithCategory[]>([]); 
 
-  const [user, login] = useState<User>(defaultUser); 
-  const [categories, setCategories] = useState<Category[]>(defaultCategories); 
+  const [user, login] = useState<User>(); 
+  const [categories, setCategories] = useState<Category[]>([]); 
 
-  const addUser = (newUser: any) => {
+  useEffect(() => {
+    if(!user?.id) return 
+
+    reloadCategories().catch(err => console.log(err))
+  }, [user])
+
+  useEffect(() => {
+    if(!user?.id) return 
+
+    reloadExpense().catch(err => console.log(err))
+  }, [categories])
+  
+  const logar = (user: User) => {
+    login(user)
+  }
+
+  const reloadCategories = async () => {
+    const categoriesRef = collection(firestore, 'tbCategories')
+
+    const categoriesQuery = query(
+      categoriesRef,
+      where('userId', '==', user?.id ?? ''),     
+    );
+  
+    const categoriesSnapshot = await getDocs(categoriesQuery);
+
+    if(categoriesSnapshot.empty) return
+
+    const categories = categoriesSnapshot.docs.map(doc => ({     
+      ...doc.data() as Category,  
+      id: doc.id,  
+    }))
+    
+    setCategories(categories )
+  }
+
+  const reloadExpense = async () => {
+    const expensesRef = collection(firestore, 'tbExpenses')
+
+    const expensesQuery = query(
+      expensesRef,
+      where('userId', '==', user?.id ?? ''),     
+    );
+
+    const expensesSnapshot = await getDocs(expensesQuery);
+    
+    if(expensesSnapshot.empty) return
+
+    const categoriesMap = new Map(
+      categories.map(cat => [cat.id, cat])
+    );
+
+    const expensesDocs: ExpenseWithCategory[] = expensesSnapshot.docs.map(doc => {
+      const data = doc.data() as Expense;
+
+      return {
+        id: doc.id,
+        name: data.name,
+        amount: data.amount,
+        date: data.date,
+        categoryId: data.categoryId,
+        userId: data.userId,
+        category: categoriesMap.get(data.categoryId)!,
+      };
+    })
+
+    setExpenses(expensesDocs)
+  }
+
+
+  const addUser = async (newUser: User) => {
     setUsers((prevUsers) => [...prevUsers, newUser]);
+
+    await firestoreService.insert('tbUsers', newUser).catch(err => console.log(err))
   };
 
-  const addExpense = (newExpense: Expense) => {
-    setExpenses((prevExpenses) => [...prevExpenses, newExpense]);
+
+  const addExpense = async (newExpense: Expense) => {
+    const expenseToSave = {
+      ...newExpense,
+      userId: user?.id
+    }
+
+    const saveExpense = await firestoreService.insert('tbExpenses', expenseToSave)
+
+    reloadExpense()
   };
 
-  const removeExpense = (id: string) => {
+  const removeExpense = async (id: string) => {
     setExpenses(expenses.filter((expense) => expense.id !== id))
+
+    await firestoreService.delete('tbExpenses', id).catch(err => console.log(err))
   };
 
-  const addCategories = (newCategory: Category) => {
-    setCategories((prevCategories) => [...prevCategories, newCategory]);
+  const addCategories = async (newCategory: Category) => {
+    const categoryToSave = {
+      ...newCategory,
+      userId: user?.id
+    }
+
+    setCategories((prevCategories) => [...prevCategories, categoryToSave]);
+
+   await firestoreService.insert('tbCategories', categoryToSave).catch(err => {
+      console.log(err)
+      alert('Ocorreu um erro ao salvar o arquivo')
+      removeCategory(newCategory.id)
+    })
   };
 
-  const removeCategory = (id: string) => {
-    if(expenses.filter((expense) => expense.category.id == id).length != 0) {
+  const removeCategory = async (id: string) => {
+    if(expenses.filter((expense) => expense.categoryId == id).length != 0) {
       Alert.alert("Erro", "Existe uma despesa cadastrada com essa categoria");
       return;
     }
 
     setCategories(categories.filter((category) => category.id !== id))
+
+    await firestoreService.delete('tbCategories', id).catch(err => {
+      console.log(err)
+      reloadCategories()
+    })
   };
 
-  const editedCategory = (categoryToEdit: Category | null, editedCategoryName: string) => {
+  const editedCategory = async (categoryToEdit: Category | null, editedCategoryName: string) => {
     if(categoryToEdit == null) return;
 
     setCategories(
@@ -93,17 +175,17 @@ export default function RootLayout() {
       )
     )
 
-    setExpenses(
-      expenses.map((expense: Expense) => 
-        expense.category.id === categoryToEdit?.id ? { ...expense, category: {id: categoryToEdit?.id, name: editedCategoryName} } : expense
-      )
-    )
+    await firestoreService.update('tbCategories', categoryToEdit.id,  { ...categoryToEdit, name: editedCategoryName })
+    .catch(err => {
+      console.log(err)
+      reloadCategories()
+    })
   }
 
   return (
     <UserContext.Provider value={{ users, addUser}}>
       <LoggedInContext.Provider value={{ 
-            user, login, 
+            user, logar, 
             expenses, addExpense, removeExpense,
             categories, addCategories, removeCategory, editedCategory,
             goal, setGoal

@@ -1,18 +1,28 @@
 import React from "react";
 import { View, Text, TouchableOpacity, FlatList, StyleSheet } from "react-native";
-import { useNavigation } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { loggedIn } from "./_layout";
 import { AntDesign, FontAwesome } from "@expo/vector-icons";
+import { Timestamp } from "firebase/firestore";
 
 const HomeScreen = () => {
     const router = useRouter();
 
-  // Simulando despesas recentes (mock)
   const { expenses } = loggedIn()
 
-  const amount = expenses.filter(expenses => expenses.date.getMonth() == new Date().getMonth()).map(expense => expense.amount).reduce((prevAmount, curAmount) => prevAmount + curAmount, 0)
+  const amount = expenses
+    .filter(expense =>  {
+      const date = expense.date instanceof Timestamp
+      ? expense.date.toDate()
+      : new Date(expense.date)
+
+      return date.getMonth() == new Date().getMonth()
+    })
+    .map(e => e.amount)
+    .reduce((prevAmount, curAmount) => prevAmount + curAmount, 0)
+    ;
+
   return (
     <View style={styles.container}>
       {/* Saudações */}

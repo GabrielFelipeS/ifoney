@@ -33,7 +33,7 @@ export default function AddExpenses() {
       id: Math.random().toString(),
       name,
       amount: parseFloat(amount),
-      category: categories.filter(category => category.id == idCategory)[0],   
+      categoryId: categories.filter(category => category.id == idCategory)[0].id,   
       date: new Date()   
     };
 
